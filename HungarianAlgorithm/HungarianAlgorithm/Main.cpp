@@ -23,10 +23,14 @@ int main()
 
 	Hungarian<float, 5, 2>::CreateDistanceMap(first, second, M2);
 
-	cout << endl << M1 << endl << endl << M2 << endl << endl;
+	//cout << endl << M1 << endl << endl << M2 << endl << endl;
 
 	Matrix<int, 5, 2> Idx;
 	H.Apply(Idx);
+
+	cout << endl << Idx << endl;
+
+	cout << "Error: " << H.GetError(M1, Idx) << endl;
 
 	return 1;
 }
