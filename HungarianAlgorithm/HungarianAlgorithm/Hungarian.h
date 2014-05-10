@@ -5,7 +5,7 @@
 
 using namespace Eigen;
 
-template<class T, int SAMPLES, int DIMENSIONS>
+template<class T, int DIMENSIONS, int SAMPLES, int SAMPLES2 = SAMPLES>
 class Hungarian
 {
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
@@ -16,15 +16,10 @@ public:
 	Hungarian() : _Mat(NULL) { };
 	~Hungarian() { if (_Mat) delete _Mat; };
 
-	void CreateDistanceMap(const Matrix<T, SAMPLES, DIMENSIONS>& First, const Matrix<T, SAMPLES, DIMENSIONS>& Second)
+	// Static functionality (main work is done here)
+	static void CreateDistanceMap(const Matrix<T, SAMPLES, DIMENSIONS>& First, const Matrix<T, SAMPLES2, DIMENSIONS>& Second, Array<T, SAMPLES, SAMPLES2>& Mat)
 	{
-		if (_Mat == NULL)
-			_Mat = new Array<T, SAMPLES, SAMPLES>();
-		CreateDistanceMap(First, Second, *_Mat);
-	}
-	static void CreateDistanceMap(const Matrix<T, SAMPLES, DIMENSIONS>& First, const Matrix<T, SAMPLES, DIMENSIONS>& Second, Array<T, SAMPLES, SAMPLES>& Mat)
-	{
-		for (int x = 0; x < SAMPLES; x++)
+		for (int x = 0; x < SAMPLES2; x++)
 			for (int y = 0; y < SAMPLES; y++)
 			{
 				Mat(y, x) = T();
@@ -32,52 +27,49 @@ public:
 				for (int i = 0; i < DIMENSIONS; i++)
 				{
 					// Add squared distances
-					Mat(y, x) += (First(x, i) - Second(y, i))*(First(x, i) - Second(y, i));
+					Mat(y, x) += (First(y, i) - Second(x, i))*(First(y, i) - Second(x, i));
 				}
 				// Take the square root to get euklidean distances
 				Mat(y, x) = sqrt(Mat(y, x));
 			}
 	}
-	int Apply(Matrix<int, SAMPLES, 2>& Idx)
-	{
-		if (_Mat != NULL)
-			return Apply(*_Mat, Idx);
-		return NOT_INITIALIZED;
-	}
-	int Apply(const Array<T, SAMPLES, SAMPLES>& Mat, Matrix<int, SAMPLES, 2>& Idx)
+	static int Apply(const Array<T, SAMPLES, SAMPLES2>& Mat, Array<int, SAMPLES, SAMPLES2>& Selection)
 	{
 		// Implemented according to: http://www.wikihow.com/Use-the-Hungarian-Algorithm
 
-		Idx = Matrix<int, SAMPLES, 2>::Zero();
-		Array<T, SAMPLES, SAMPLES> tMat = Mat;
+		const int maxSamples = std::max(SAMPLES, SAMPLES2);
+		Array<T, Dynamic, Dynamic> tMat = Array<T, Dynamic, Dynamic>::Ones(maxSamples, maxSamples);
+		tMat *= Mat.maxCoeff();
+		tMat.block<SAMPLES, SAMPLES2>(0, 0) = Mat;
 
 		// First remove min value from rows and then from cols
-		for (int r = 0; r < SAMPLES; r++)
+		for (int r = 0; r < maxSamples; r++)
 		{
 			tMat.row(r) = tMat.row(r) - tMat.row(r).minCoeff();
 		}
-		for (int c = 0; c < SAMPLES; c++)
+		for (int c = 0; c < maxSamples; c++)
 		{
 			tMat.col(c) = tMat.col(c) - tMat.col(c).minCoeff();
 		}
 
-		Array<bool, SAMPLES, 1> coveredCols, coveredRows;
+		Array<bool, Dynamic, 1> coveredCols = Array<bool, Dynamic, 1>(maxSamples);
+		Array<bool, Dynamic, 1> coveredRows = Array<bool, Dynamic, 1>(maxSamples);
 		int addedLines = CoverWithLines(tMat, coveredCols, coveredRows);
 
-		while (addedLines != SAMPLES)
+		while (addedLines != maxSamples)
 		{
 			// Step 6, find minimum value that is not covered
 			T minValue = numeric_limits<T>::max();
-			for (int c = 0; c < SAMPLES; c++)
-				for (int r = 0; r < SAMPLES; r++)
+			for (int c = 0; c < maxSamples; c++)
+				for (int r = 0; r < maxSamples; r++)
 					if (coveredRows(r) != 1 && coveredCols(c) != 1)
 						minValue = std::min<T>(minValue, tMat(r, c));
 
 			// Add the value to the covered elements
-			for (int c = 0; c < SAMPLES; c++)
+			for (int c = 0; c < maxSamples; c++)
 				if (coveredCols(c))
 					tMat.col(c) = tMat.col(c) + minValue;
-			for (int r = 0; r < SAMPLES; r++) // Two times if covered twice
+			for (int r = 0; r < maxSamples; r++) // Two times if covered twice
 				if (coveredRows(r))
 					tMat.row(r) = tMat.row(r) + minValue;
 
@@ -89,20 +81,63 @@ public:
 		}
 
 		// Step 9, select zero elements
-		SelectZeros(tMat, Idx);
-
-		return ALL_OK;
+		return SelectZeros(tMat, Selection);
 	}
-	T GetError(const Array<T, SAMPLES, SAMPLES>& Mat, const Matrix<int, SAMPLES, 2>& Idx)
+	static T GetError(const Array<T, SAMPLES, SAMPLES2>& Mat, const Array<int, SAMPLES, SAMPLES2>& Selection)
 	{
 		T error = T();
-		for (int r = 0; r < SAMPLES; r++)
-			error += Mat(Idx(r, 0), Idx(r, 1));
-
+		for (int x = 0; x < SAMPLES2; x++)
+			for (int y = 0; y < SAMPLES; y++)
+				if (Selection(y, x) == 1)
+					error += Mat(y, x);
 		return error;
 	}
+	static void GetFirstIndices(const Array<int, SAMPLES, SAMPLES2>& Selection, Array<int, SAMPLES, 1>& Idx)
+	{
+		Idx = -Array<int, SAMPLES, 1>::Ones();
+		for (int r = 0; r < SAMPLES; r++)
+			for (int c = 0; c < SAMPLES2; c++)
+				if (Selection(r, c) == 1)
+				{
+					Idx(r) = c;
+					break;
+				}
+	}
+	static void GetSecondIndices(const Array<int, SAMPLES, SAMPLES2>& Selection, Array<int, SAMPLES2, 1>& Idx)
+	{
+		Idx = -Array<int, SAMPLES2, 1>::Ones();
+		for (int c = 0; c < SAMPLES2; c++)
+			for (int r = 0; r < SAMPLES; r++)
+				if (Selection(r, c) == 1)
+				{
+					Idx(c) = r;
+					break;
+				}
+	}
 
-	int GetDistanceMap(Array<T, SAMPLES, SAMPLES>& Map)
+	// For instantiated object
+	void CreateDistanceMap(const Matrix<T, SAMPLES, DIMENSIONS>& First, const Matrix<T, SAMPLES2, DIMENSIONS>& Second)
+	{
+		if (_Mat == NULL)
+			_Mat = new Array<T, SAMPLES, SAMPLES2>();
+		CreateDistanceMap(First, Second, *_Mat);
+	}
+	int Apply()
+	{
+		if (_Mat != NULL)
+		{
+			if (_Sel == NULL)
+				_Sel = new Array<int, SAMPLES, SAMPLES2>();
+			return Apply(*_Mat, *_Sel);
+		}
+		return NOT_INITIALIZED;
+	}
+
+	void SetDistanceMap(const Array<T, SAMPLES, SAMPLES2>& Map)
+	{
+		*_Mat = Map;
+	}
+	int GetDistanceMap(Array<T, SAMPLES, SAMPLES2>& Map)
 	{
 		if (_Mat)
 		{
@@ -112,10 +147,45 @@ public:
 		return NOT_INITIALIZED;
 	}
 
-private:
-	Array<T, SAMPLES, SAMPLES>* _Mat;
+	void SetSelection(const Array<int, SAMPLES, SAMPLES2>& Selection)
+	{
+		*_Idx = Idx;
+	}
+	int GetSelection(Array<int, SAMPLES, SAMPLES2>& Selection)
+	{
+		if (_Sel)
+		{
+			Selection = *_Sel;
+			return ALL_OK;
+		}
+		return NOT_INITIALIZED;
+	}
 
-	int CoverWithLines(const Array<T, SAMPLES, SAMPLES>& tMat, Array<bool, SAMPLES, 1>& coveredCols, Array<bool, SAMPLES, 1>& coveredRows)
+	T GetError()
+	{
+		if (_Mat && _Sel)
+			return GetError(*_Mat, *_Sel);
+		return NOT_INITIALIZED;
+	}
+	int GetFirstIndices(Array<int, SAMPLES, 1>& Idx)
+	{
+		if (_Mat == NULL || _Sel == NULL)
+			return NOT_INITIALIZED;
+		GetFirstIndices(*_Sel, Idx);
+
+	}
+	int GetSecondIndices(Array<int, SAMPLES2, 1>& Idx)
+	{
+		if (_Mat == NULL || _Sel == NULL)
+			return NOT_INITIALIZED;
+		GetSecondIndices(*_Sel, Idx);
+	}
+
+private:
+	Array<T, SAMPLES, SAMPLES2>* _Mat;
+	Array<int, SAMPLES, SAMPLES2>* _Sel;
+
+	static int CoverWithLines(const Array<T, Dynamic, Dynamic>& tMat, Array<bool, Dynamic, 1>& coveredCols, Array<bool, Dynamic, 1>& coveredRows)
 	{
 		// Create a matrix with ones where there are zeros in the distance map
 		Array<int, SAMPLES, SAMPLES> zMat = tMat.cwiseEqual(T()).cast<int>();
@@ -149,42 +219,42 @@ private:
 
 		return addedLines;
 	}
-	int SelectZeros(const Array<T, SAMPLES, SAMPLES>& tMat, Matrix<int, SAMPLES, 2>& Idx)
+	static int SelectZeros(const Array<T, Dynamic, Dynamic>& Mat, Array<int, SAMPLES, SAMPLES2>& Sel)
 	{	// Step 9 make optimal selection and set Idx
-		Array<int, SAMPLES, SAMPLES> zMat = tMat.cwiseEqual(T()).cast<int>();
+		const int maxSamples = std::max(SAMPLES, SAMPLES2);
+		Array<int, Dynamic, Dynamic> zMat = Mat.cwiseEqual(T()).cast<int>();
+		Array<int, Dynamic, Dynamic> tIdx = Array<int, Dynamic, Dynamic>::Zero(maxSamples, maxSamples);
 
 		int addedIndices = 0;
 		int iteration = 0;
-		Array<int, SAMPLES, SAMPLES>::Index i;
+		Array<int, Dynamic, Dynamic>::Index i;
 
 		while (iteration < 10)
 		{
-			Array<int, SAMPLES, 1> colZeros = zMat.colwise().sum();
-			for (int c = 0; c < SAMPLES; c++)
+			Array<int, Dynamic, 1> colZeros = zMat.colwise().sum();
+			for (int c = 0; c < maxSamples; c++)
 			{
 				if (colZeros(c) == 1)
 				{
 					zMat.col(c).maxCoeff(&i);
-					Idx(addedIndices, 0) = i;
-					Idx(addedIndices, 1) = c;
-					zMat.row(i) = Array<int, 1, SAMPLES>::Zero();
+					tIdx(i, c) = 1;
+					zMat.row(i) = Array<int, 1, Dynamic>::Zero(maxSamples);
 					addedIndices++;
 				}
 
-				if (addedIndices == SAMPLES)
+				if (addedIndices == SAMPLES2)
 					break;
 			}
 
 
-			Array<int, SAMPLES, 1> rowZeros = zMat.rowwise().sum();
-			for (int r = 0; r < SAMPLES; r++)
+			Array<int, Dynamic, 1> rowZeros = zMat.rowwise().sum();
+			for (int r = 0; r < maxSamples; r++)
 			{
 				if (rowZeros(r) == 1)
 				{
 					zMat.row(r).maxCoeff(&i);
-					Idx(addedIndices, 0) = r;
-					Idx(addedIndices, 1) = i;
-					zMat.col(i) = Array<int, SAMPLES, 1>::Zero();
+					tIdx(r, i) = 1;
+					zMat.col(i) = Array<int, Dynamic, 1>::Zero(maxSamples);
 					addedIndices++;
 				}
 
@@ -196,6 +266,7 @@ private:
 			iteration++;
 		}
 
+		Sel = tIdx.topLeftCorner(SAMPLES, SAMPLES2);
 		return iteration == 10; // if iteration roof was hit, don't return 0
 	}
 };
