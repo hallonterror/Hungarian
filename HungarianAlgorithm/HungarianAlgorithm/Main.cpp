@@ -151,7 +151,7 @@ int testStatic5x4()
 
 int main()
 {
-	cout << "Result from instantiated 5x5 tests: " << testInstantiated5x5() << endl;
-	cout << "Result from static 5x4 test: " << testStatic5x4() << endl;
+	cout << "Result from instantiated 5x5 tests: " << ((testInstantiated5x5() == 0) ? "Success" : "Failure") << endl;
+	cout << "Result from static 5x4 test: " << ((testStatic5x4() == 0) ? "Success" : "Failure") << endl;
 	return 1;
 }

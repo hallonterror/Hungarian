@@ -204,16 +204,8 @@ private:
 			{
 				if (zMat(r, c) == 1)
 				{
-					if (coveredRows(r) || coveredCols(c))
-						continue;
-					
 					int diff = colZeros(c) - rowZeros(r);
 					bool vertical = (diff == 0) ? prevDir : diff > 0;
-
-					if (vertical && coveredCols(c))
-						continue;
-					if (!vertical && coveredRows(r))
-						continue;
 
 					if (vertical)
 					{
