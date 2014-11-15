@@ -48,17 +48,9 @@ public:
 		for (int r = 0; r < maxSamples; r++)
 			tMat.row(r) = tMat.row(r) - tMat.row(r).minCoeff();
 		
-		// Check if we need to make column subtraction
+		// Start over from 0 and make the subtractions
 		for (int c = 0; c < maxSamples; c++)
-		{
-			if (tMat.col(c).minCoeff() != T(0))
-			{
-				// Start over from 0 and make the subtractions
-				for (c = 0; c < maxSamples; c++)
-					tMat.col(c) = tMat.col(c) - tMat.col(c).minCoeff();
-				break;
-			}
-		}
+			tMat.col(c) = tMat.col(c) - tMat.col(c).minCoeff();
 
 		Array<bool, Dynamic, 1> coveredCols = Array<bool, Dynamic, 1>(maxSamples);
 		Array<bool, Dynamic, 1> coveredRows = Array<bool, Dynamic, 1>(maxSamples);
@@ -70,16 +62,13 @@ public:
 			T minValue = numeric_limits<T>::max();
 			for (int c = 0; c < maxSamples; c++)
 				for (int r = 0; r < maxSamples; r++)
-					if (coveredRows(r) != 1 && coveredCols(c) != 1)
+					if (!coveredRows(r) && !coveredCols(c))
 						minValue = std::min<T>(minValue, tMat(r, c));
 
 			// Add the value to the covered elements
 			for (int c = 0; c < maxSamples; c++)
-				if (coveredCols(c))
-					tMat.col(c) = tMat.col(c) + minValue;
-			for (int r = 0; r < maxSamples; r++) // Two times if covered twice
-				if (coveredRows(r))
-					tMat.row(r) = tMat.row(r) + minValue;
+				for (int r = 0; r < maxSamples; r++)
+					tMat(r, c) += ((T)coveredCols(c) + (T)coveredRows(r))*minValue;
 
 			// Step 7, subtract the minimum element
 			tMat = tMat - minValue;
@@ -208,16 +197,18 @@ private:
 		Array<int, SAMPLES, 1> colZeros = zMat.colwise().sum();
 		Array<int, SAMPLES, 1> rowZeros = zMat.rowwise().sum();
 
+		bool prevDir = 0;
 		for (int r = 0; r < SAMPLES; r++)
 		{
 			for (int c = 0; c < SAMPLES; c++)
 			{
 				if (zMat(r, c) == 1)
 				{
-					if (coveredRows(r) && coveredCols(c))
+					if (coveredRows(r) || coveredCols(c))
 						continue;
 					
-					bool vertical = (colZeros(c) - rowZeros(r)) > 0;
+					int diff = colZeros(c) - rowZeros(r);
+					bool vertical = (diff == 0) ? prevDir : diff > 0;
 
 					if (vertical && coveredCols(c))
 						continue;
@@ -237,6 +228,8 @@ private:
 
 					colZeros = zMat.colwise().sum();
 					rowZeros = zMat.rowwise().sum();
+
+					prevDir = vertical;
 					addedLines++;
 				}
 			}
