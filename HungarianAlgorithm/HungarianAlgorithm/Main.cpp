@@ -84,25 +84,25 @@ int testInstantiated5x5()
 	// Create measurement data
 	Matrix<float, 5, 2> first, second;
 
-	for (int i = 0; i < 2; i++) // CHANGE TO 3 WHEN REMOVING CODE BELOW
-	{
-		DATA_SETS current = (DATA_SETS)i;
+	//for (int i = 0; i < 2; i++) // CHANGE TO 3 WHEN REMOVING CODE BELOW
+	//{
+	//	DATA_SETS current = (DATA_SETS)i;
 
-		// Perform first computation
-		getData(current, first, second, true_Idx1, true_Idx2, true_error);
-		H.CreateDistanceMap(first, second);
-		H.Apply();
-		error = H.GetError();
-		H.GetFirstIndices(Idx1);
-		H.GetSecondIndices(Idx2);
+	//	// Perform first computation
+	//	getData(current, first, second, true_Idx1, true_Idx2, true_error);
+	//	H.CreateDistanceMap(first, second);
+	//	H.Apply();
+	//	error = H.GetError();
+	//	H.GetFirstIndices(Idx1);
+	//	H.GetSecondIndices(Idx2);
 
-		if ((Idx1 - true_Idx1).abs().sum() > 0)
-			return INDEX1_DIFF;
-		if ((Idx2 - true_Idx2).abs().sum() > 0)
-			return INDEX2_DIFF;
-		if (std::abs(true_error - error) > 0.0001)
-			return ERROR_DIFF;
-	}
+	//	if ((Idx1 - true_Idx1).abs().sum() > 0)
+	//		return INDEX1_DIFF;
+	//	if ((Idx2 - true_Idx2).abs().sum() > 0)
+	//		return INDEX2_DIFF;
+	//	if (std::abs(true_error - error) > 0.0001)
+	//		return ERROR_DIFF;
+	//}
 
 	// Perform third computation
 	getData(Set3_5x5, first, second, true_Idx1, true_Idx2, true_error);
@@ -156,7 +156,6 @@ int testStatic5x4()
 
 	// Perform computation
 	getData(Set1_5x4, first, second, true_Idx1, true_Idx2, true_error);
-
 	Hungarian<float, 2, 5, 4>::CreateDistanceMap(first, second, D);
 	Hungarian<float, 2, 5, 4>::Apply(D, S);
 	error = Hungarian<float, 2, 5, 4>::GetError(D, S);

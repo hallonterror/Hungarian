@@ -38,18 +38,26 @@ public:
 		// Implemented according to: http://www.wikihow.com/Use-the-Hungarian-Algorithm
 
 		const int maxSamples = std::max(SAMPLES, SAMPLES2);
+
+		// Add dummy rows
 		Array<T, Dynamic, Dynamic> tMat = Array<T, Dynamic, Dynamic>::Ones(maxSamples, maxSamples);
-		tMat *= Mat.maxCoeff();
+		tMat *= Mat.maxCoeff();	// Make sure that potential dummy rows have the max value
 		tMat.block<SAMPLES, SAMPLES2>(0, 0) = Mat;
 
 		// First remove min value from rows and then from cols
 		for (int r = 0; r < maxSamples; r++)
-		{
 			tMat.row(r) = tMat.row(r) - tMat.row(r).minCoeff();
-		}
+		
+		// Check if we need to make column subtraction
 		for (int c = 0; c < maxSamples; c++)
 		{
-			tMat.col(c) = tMat.col(c) - tMat.col(c).minCoeff();
+			if (tMat.col(c).minCoeff() != T(0))
+			{
+				// Start over from 0 and make the subtractions
+				for (c = 0; c < maxSamples; c++)
+					tMat.col(c) = tMat.col(c) - tMat.col(c).minCoeff();
+				break;
+			}
 		}
 
 		Array<bool, Dynamic, 1> coveredCols = Array<bool, Dynamic, 1>(maxSamples);
@@ -172,13 +180,14 @@ public:
 		if (_Mat == NULL || _Sel == NULL)
 			return NOT_INITIALIZED;
 		GetFirstIndices(*_Sel, Idx);
-
+		return ALL_OK;
 	}
 	int GetSecondIndices(Array<int, SAMPLES2, 1>& Idx)
 	{
 		if (_Mat == NULL || _Sel == NULL)
 			return NOT_INITIALIZED;
 		GetSecondIndices(*_Sel, Idx);
+		return ALL_OK;
 	}
 
 private:
@@ -195,26 +204,42 @@ private:
 		coveredRows = Array<bool, SAMPLES, 1>::Zero();
 		int addedLines = 0;
 
-		// Loop until all covered
-		while (zMat.sum() != 0) // All zeros are marked
-		{
-			// Create vector with the number of zeros along rows and columns
-			Array<int, SAMPLES, 1> colZeros = zMat.colwise().sum();
-			Array<int, SAMPLES, 1> rowZeros = zMat.rowwise().sum();
+		// Create vector with the number of zeros along rows and columns
+		Array<int, SAMPLES, 1> colZeros = zMat.colwise().sum();
+		Array<int, SAMPLES, 1> rowZeros = zMat.rowwise().sum();
 
-			// Decide on the line to draw and set the corresponding values to zero
-			Array<int, SAMPLES, 1>::Index colIdx, rowIdx;
-			if (colZeros.maxCoeff(&colIdx) < rowZeros.maxCoeff(&rowIdx))
+		for (int r = 0; r < SAMPLES; r++)
+		{
+			for (int c = 0; c < SAMPLES; c++)
 			{
-				zMat.row(rowIdx) = Array<int, 1, SAMPLES>::Zero();
-				coveredRows(rowIdx) = 1;
+				if (zMat(r, c) == 1)
+				{
+					if (coveredRows(r) && coveredCols(c))
+						continue;
+					
+					bool vertical = (colZeros(c) - rowZeros(r)) > 0;
+
+					if (vertical && coveredCols(c))
+						continue;
+					if (!vertical && coveredRows(r))
+						continue;
+
+					if (vertical)
+					{
+						coveredCols(c) = true;
+						zMat.col(c) = Array<int, SAMPLES, 1>::Zero();
+					}
+					else
+					{
+						coveredRows(r) = true;
+						zMat.row(r) = Array<int, SAMPLES, 1>::Zero();
+					}
+
+					colZeros = zMat.colwise().sum();
+					rowZeros = zMat.rowwise().sum();
+					addedLines++;
+				}
 			}
-			else
-			{
-				zMat.col(colIdx) = Array<int, SAMPLES, 1>::Zero();
-				coveredCols(colIdx) = 1;
-			}
-			addedLines++;
 		}
 
 		return addedLines;
